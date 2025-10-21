@@ -1,0 +1,11 @@
+{% include 'header.html' %}
+
+<form action="/API/user/login" method="post">
+    <label for="fusername">Username:</label>
+    <input type="text" id="fusername" name="username" placeholder="John.Doe"/>
+    <label for="fpassword">Password:</label>
+    <input type="password" id="fpassword" name="password" placeholder="S3cret-P4ssw0rd"/>
+    <input type="submit" value="login">
+</form>
+
+{% include 'footer.html' %}

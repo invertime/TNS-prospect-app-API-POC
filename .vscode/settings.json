@@ -1,0 +1,12 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "name": "anonymous",
+            "database": "${workspaceFolder:POC}/database/db.db"
+        }
+    ],
+    "sqltools.useNodeRuntime": true,
+    "python.REPL.enableREPLSmartSend": false
+}
