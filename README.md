@@ -10,7 +10,7 @@ Debug mode :
 python -m venv .venv
 source ./.venv/bin/activate
 pip install -r requirements.txt
-python3 -m flask --app=src/app.py run --port=8000 --debug
+python3 src/app.py
 ```
 
 To init an empty db:
