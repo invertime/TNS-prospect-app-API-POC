@@ -24,7 +24,7 @@ app.secret_key = b"secret_key"
 
 # Database
 
-DATABASE='../database/db.db'
+DATABASE='./database/db.db'
 
 def init_db():
     with app.app_context():
@@ -200,3 +200,20 @@ def api_login_user():
 def logout():
     logout_user()
     return redirect("/?error=Logout successfully")
+
+@app.route("/API/client/create", methods=["POST"])
+def api_create_client():
+    pass
+@app.route("/API/client/read/", methods=["POST"])
+def api_read_client():
+    pass
+@app.route("/API/client/update", methods=["POST"])
+def api_update_client():
+    pass
+@app.route("/API/client/delete", methods=["POST"])
+def api_delete_client():
+    pass
+
+if __name__ == "__main__":
+    app.run(port=8000, debug=True)
+
