@@ -95,6 +95,8 @@ def find_user(id):
 def load_user(user_id):
     return find_user(user_id)
 
+# Displayed routes
+
 @app.route("/")
 def home():
     return "Hello world !"
@@ -118,6 +120,8 @@ def dashboard_view():
     return render_template(
         "dashboard.html"
     )
+
+# API routes
 
 @app.route("/API/user/register", methods=["POST"])
 def api_register_user():
@@ -204,8 +208,8 @@ def logout():
 @app.route("/API/client/create", methods=["POST"])
 def api_create_client():
     pass
-@app.route("/API/client/read/", methods=["POST"])
-def api_read_client():
+@app.route("/API/client/read/<int:id>", methods=["POST"])
+def api_read_client(id):
     pass
 @app.route("/API/client/update", methods=["POST"])
 def api_update_client():
