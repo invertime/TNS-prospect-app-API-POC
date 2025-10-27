@@ -10,15 +10,6 @@ Debug mode :
 python -m venv .venv
 source ./.venv/bin/activate
 pip install -r requirements.txt
+export ENV_FILE_LOCATION=../.env
 python3 src/__init__.py
-```
-
-To init an empty db with tables from schema.sql:
-
-```bash
-sqlite3 database/db.db "VACUUM;"
-cd src
-python
-from __init__.py import init_db
-init_db()
 ```

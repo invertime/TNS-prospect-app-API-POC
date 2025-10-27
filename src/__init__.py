@@ -1,42 +1,42 @@
-import sqlite3
 from flask import (
     Flask,
     g,
     request,
-    redirect,
-    render_template,
-    abort
-)
-from flask_login import (
-    LoginManager,
-    UserMixin,
-    login_user,
-    logout_user,
-    login_required
+    jsonify
 )
 import bcrypt
+from flask_jwt_extended import create_access_token, JWTManager, decode_token
+import datetime
+from flask_cors import CORS
+import psycopg2
 
 app = Flask(__name__)
-login_manager = LoginManager()
-login_manager.init_app(app)
+CORS(app)
+app.config.from_envvar('ENV_FILE_LOCATION')
 
-app.secret_key = b"secret_key"
+app.secret_key = app.config["JWT_SECRET_KEY"];
+
+jwt = JWTManager(app)
 
 # Database
 
-DATABASE='./database/db.db'
+DB_NAME=getattr(app.config, "DB_NAME", "pp2i1")
+DB_USER=app.config["DB_USER"]
+DB_PASSWORD=app.config["DB_PASSWORD"]
+DB_HOST=getattr(app.config, "DB_HOST", "localhost")
+DB_PORT=getattr(app.config, "DB_PORT", 5432)
 
 def init_db():
     with app.app_context():
         db = get_db()
         with app.open_resource('../database/schema.sql', mode='r') as f:
-            db.cursor().executescript(f.read())
+            db.cursor().execute(f.read())
         db.commit()
 
 def get_db():
     db=getattr(g, '_database', None)
     if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
+        db = g._database = psycopg2.connect(f"dbname={DB_NAME} user={DB_USER} password={DB_PASSWORD} host={DB_HOST} port={DB_PORT}")
     return db
 
 @app.teardown_appcontext
@@ -48,8 +48,7 @@ def close_connection(exeption):
 # helpers
 
 def hash_password(plain_text_password):
-    # Hash a password for the first time
-    #   (Using bcrypt, the salt is saved into the hash itself)
+    # Hash a password for the first time. Using bcrypt, the salt is saved into the hash itself
     return bcrypt.hashpw(plain_text_password, bcrypt.gensalt())
 
 def check_password_hash(plain_text_password, hashed_password):
@@ -58,7 +57,7 @@ def check_password_hash(plain_text_password, hashed_password):
 
 # User
 
-class User(UserMixin):
+class User():
     def __init__(
         self,
         id: int,
@@ -75,14 +74,14 @@ class User(UserMixin):
         self.nom = nom
         self.prenom = prenom
 
-def find_user(id):
+def find_user(id: int):
     db = get_db()
     cursor = db.cursor()
     cursor.execute(
         """
         SELECT *
         FROM users
-        WHERE id=?;
+        WHERE id=%s
         """,
         (id,),
     )
@@ -91,49 +90,25 @@ def find_user(id):
         return None
     return User(id=id, username=user[1], password=user[2], role=user[3], nom=user[4], prenom=user[5])
 
-@login_manager.user_loader
-def load_user(user_id):
-    return find_user(user_id)
-
 # Displayed routes
 
 @app.route("/")
 def home():
     return "Hello world !"
 
-@app.route("/user/register", methods=["GET"])
-def register_user_view():
-    return render_template(
-        "register.html"
-    )
-
-
-@app.route("/user/login", methods=["GET"])
-def login_user_view():
-    return render_template(
-        "login.html"
-    )
-
-@app.route("/dashboard", methods=["GET"])
-@login_required
-def dashboard_view():
-    return render_template(
-        "dashboard.html"
-    )
-
 # API routes
 
 @app.route("/API/user/register", methods=["POST"])
 def api_register_user():
 
-    username = request.form["username"]
-    password = request.form["password"]
-    role = request.form["role"]
-    nom = request.form["nom"]
-    prenom = request.form["prenom"]
+    username = request.json["username"]
+    password = request.json["password"]
+    role = request.json["role"]
+    nom = request.json["nom"]
+    prenom = request.json["prenom"]
 
     if None in [username, password, role, nom, prenom] or "" in [username, password, role, nom, prenom]:
-        return "missing field"
+        return ({'error':"missing field"}, 400)
 
     db = get_db()
     cursor = db.cursor()
@@ -141,23 +116,28 @@ def api_register_user():
     cursor.execute(
         """
         INSERT INTO users (username, password, role, nom, prenom)
-        VALUES (?,?,?,?,?)
+        VALUES (%s,%s,%s,%s,%s)
         """,
         (username, hash_password(password), role, nom, prenom)
     )
 
     db.commit()
 
-    return redirect("/user/login")
+    id = cursor.lastrowid
+
+    expires = datetime.timedelta(days=7)
+    access_token = create_access_token(identity=str(id), expires_delta=expires)
+
+    return ({'token': access_token}, 201)
 
 @app.route("/API/user/login", methods=["POST"])
 def api_login_user():
 
-    username = request.form["username"]
-    password = request.form["password"]
+    username = request.json["username"]
+    password = request.json["password"]
 
     if None in [username, password] or "" in [username, password]:
-        return "missing field"
+        return ({'error': 'Missing field'}, 400)
 
     db = get_db()
     cursor = db.cursor()
@@ -166,7 +146,7 @@ def api_login_user():
         """
         SELECT password
         FROM users
-        WHERE username = ?;
+        WHERE username = %s
         """,
         (username,)
     )
@@ -174,16 +154,16 @@ def api_login_user():
     passwd = cursor.fetchone()
 
     if passwd is None:
-        return redirect("/user/login?error=Incorrect username")
+        return ({'error': 'User not found'}, 404)
 
     if not check_password_hash(password.encode(), passwd[0].encode()):
-        return redirect("/user/login?error=Wrong password")
+        return ({'error': 'Wrong password'}, 401)
 
     cursor.execute(
         """
         SELECT *
         FROM users
-        WHERE username = ?;
+        WHERE username = %s
         """,
         (username,)
     )
@@ -191,19 +171,31 @@ def api_login_user():
     user = cursor.fetchone()
     if user is None:
         return None
+
     user = User(id=user[0], username=user[1], password=user[2], role=user[3], nom=user[4], prenom=user[5])
 
     app.logger.info(user.id)
 
-    login_user(user)
+    expires = datetime.timedelta(days=7)
+    access_token = create_access_token(identity=str(user.id), expires_delta=expires)
 
-    return redirect("/dashboard")
+    return ({'token': access_token}, 200)
 
-@app.route("/API/user/logout")
-@login_required
-def logout():
-    logout_user()
-    return redirect("/?error=Logout successfully")
+@app.route("/API/user")
+def api_user():
+
+    token = request.headers.get("Authorization")
+
+    if (token == ""):
+        return ({"msg": "missing token"}, 400)
+
+    token = decode_token(token)
+
+    app.logger.info(token["sub"])
+
+    user = find_user(token["sub"])
+
+    return (jsonify(None if user is None else user.__dict__), 200 if user else 401)
 
 @app.route("/API/client/create", methods=["POST"])
 def api_create_client():
@@ -220,4 +212,3 @@ def api_delete_client():
 
 if __name__ == "__main__":
     app.run(port=8000, debug=True)
-

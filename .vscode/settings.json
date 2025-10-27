@@ -5,6 +5,22 @@
             "driver": "SQLite",
             "name": "anonymous",
             "database": "${workspaceFolder:POC}/database/db.db"
+        },
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "name": "api db",
+            "database": "${workspaceFolder:API}/database/db.db"
+        },
+        {
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "localhost",
+            "port": 5432,
+            "driver": "PostgreSQL",
+            "name": "pp2i1",
+            "database": "pp2i1",
+            "username": "invertime"
         }
     ],
     "sqltools.useNodeRuntime": true,
