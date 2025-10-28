@@ -210,5 +210,5 @@ def api_update_client():
 def api_delete_client():
     pass
 
-if __name__ == "__main__":
-    app.run(port=8000, debug=True)
+# if __name__ == "__main__":
+#     app.run(port=8000, debug=True)
