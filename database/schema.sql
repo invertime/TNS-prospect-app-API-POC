@@ -9,6 +9,10 @@ DROP TABLE IF EXISTS Projects CASCADE;
 DROP TABLE IF EXISTS Workers_Projects CASCADE;
 DROP TABLE IF EXISTS Milestones CASCADE;
 DROP TABLE IF EXISTS Messages CASCADE;
+DROP TABLE IF EXISTS Users_Roles CASCADE;
+DROP TABLE IF EXISTS Skills_Workers CASCADE;
+DROP TABLE IF EXISTS Skills_Projects CASCADE;
+
 
 --  TABLE : Role
 
@@ -38,7 +42,7 @@ CREATE TABLE Users_Roles (
     id_user INT REFERENCES Users(id) ON DELETE CASCADE,
     id_role INT REFERENCES  Roles(id) ON DELETE CASCADE,
     PRIMARY KEY(id_user,id_role)
-)
+);
 
 --  TABLE : Clients
 
@@ -106,7 +110,7 @@ CREATE TABLE Skills_Projects (
 
 --  TABLE : Skills_Workers (relation N:N)
 
-CREATE TABLE Skills_workers (
+CREATE TABLE Skills_Workers (
     id_worker INT REFERENCES Workers(id) ON DELETE CASCADE,
     id_skill INT REFERENCES Skills(id) ON DELETE CASCADE,
     level INT,
@@ -124,7 +128,7 @@ CREATE TABLE Milestones (
     end_date DATE,
     description TEXT,
     status VARCHAR(50) CHECK (status IN ('A faire','En cours','Terminé')),
-    id_     manager INT REFERENCES Workers(id) ON DELETE SET NULL
+    id_manager INT REFERENCES Workers(id) ON DELETE SET NULL
 );
 
 
