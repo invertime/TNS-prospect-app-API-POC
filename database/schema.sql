@@ -1,121 +1,120 @@
+-- Drop existing tables
 
---  Création de la base de données
-
-CREATE DATABASE bdd_PPII;
-\c bdd_PPII;
+DROP TABLE IF EXISTS Roles CASCADE;
+DROP TABLE IF EXISTS Users CASCADE;
+DROP TABLE IF EXISTS Clients CASCADE;
+DROP TABLE IF EXISTS Workers CASCADE;
+DROP TABLE IF EXISTS Skills CASCADE;
+DROP TABLE IF EXISTS Projects CASCADE;
+DROP TABLE IF EXISTS Workers_Projects CASCADE;
+DROP TABLE IF EXISTS Milestones CASCADE;
+DROP TABLE IF EXISTS Messages CASCADE;
 
 --  TABLE : Role
-DROP TABLE IF EXISTS Roles;
 
 CREATE TABLE Roles (
     id SERIAL PRIMARY KEY,
-    titre VARCHAR(100) NOT NULL,
+    title VARCHAR(100) NOT NULL,
     description TEXT,
     permissions TEXT
 );
 
-DROP TABLE IF EXISTS Utilisateur;
+--  TABLE : Users
 
---  TABLE : Utilisateur
-CREATE TABLE Utilisateur (
+CREATE TABLE Users (
     id SERIAL PRIMARY KEY,
-    nom VARCHAR(100) NOT NULL,
-    prenom VARCHAR(100) NOT NULL,
-    date_de_naissance DATE,
-    mot_de_passe VARCHAR(255) NOT NULL
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    birth_date DATE,
+    password VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
-    numero_telephone VARCHAR(20),
-    carte_vitale VARCHAR(50),
-    date_creation_compte TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    role_id INT REFERENCES Role(id) ON DELETE SET NULL
+    phone VARCHAR(20),
+    health_insurance_card VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    role_id INT REFERENCES Roles(id) ON DELETE SET NULL
 );
 
-DROP TABLE IF EXISTS Clients;
-
 --  TABLE : Clients
+
 CREATE TABLE Clients (
     id SERIAL PRIMARY KEY,
-    nom VARCHAR(150) NOT NULL,
-    adresse TEXT,
-    adresse_mail VARCHAR(255) UNIQUE,
-    numero_telephone VARCHAR(20),
-    secteur VARCHAR(100),
+    name VARCHAR(150) NOT NULL,
+    adress TEXT,
+    email VARCHAR(255) UNIQUE,
+    phone VARCHAR(20),
+    area VARCHAR(100),
     description TEXT,
     latitude FLOAT,
     longitude FLOAT,
-    statut VARCHAR(50) DEFAULT 'prospect',
-    date_creation DATE DEFAULT CURRENT_DATE
+    status VARCHAR(50) DEFAULT 'prospect',
+    created_at DATE DEFAULT CURRENT_DATE
 );
 
-DROP TABLE IF EXISTS Intervenants;
+--  TABLE : Workers
 
---  TABLE : Intervenants
-CREATE TABLE Intervenants (
+CREATE TABLE Workers (
     id SERIAL PRIMARY KEY,
-    id_compte INT REFERENCES Utilisateur(id) ON DELETE CASCADE,
-    competences TEXT,
-    disponibilite TEXT,
+    id_account INT REFERENCES Users(id) ON DELETE CASCADE,
+    skills TEXT,
+    availability TEXT,
     portfolio TEXT,
     description TEXT,
     documents TEXT
 );
 
-DROP TABLE IF EXISTS Competences;
+--  TABLE : Skills
 
---  TABLE : Competences
-CREATE TABLE Competences (
+CREATE TABLE Skills (
     id SERIAL PRIMARY KEY,
-    titre VARCHAR(100) NOT NULL,
-    niveau SMALLINT CHECK (niveau BETWEEN 1 AND 5)
+    title VARCHAR(100) NOT NULL,
+    level SMALLINT CHECK (level BETWEEN 1 AND 5)
 );
 
-DROP TABLE IF EXISTS Projets;
-
 --  TABLE : Projets
-CREATE TABLE Projets (
+
+CREATE TABLE Projects (
     id SERIAL PRIMARY KEY,
     name VARCHAR(150) NOT NULL,
     id_client INT REFERENCES Clients(id) ON DELETE CASCADE,
-    statut VARCHAR(50) DEFAULT 'en préparation',
-    date_debut DATE,
-    date_rendu DATE,
+    status VARCHAR(50) DEFAULT 'en préparation',
+    begin_date DATE,
+    due_date DATE,
     description TEXT,
-    competences TEXT,
-    chef_projet INT REFERENCES Intervenants(id) ON DELETE SET NULL
+    skills TEXT,
+    id_project_manager INT REFERENCES Workers(id) ON DELETE SET NULL
 );
-
-DROP TABLE IF EXISTS Intervenants_Projets;
 
 --  TABLE : Intervenants_Projets (relation N:N)
-CREATE TABLE Intervenants_Projets (
-    id_intervenants INT REFERENCES Intervenants(id) ON DELETE CASCADE,
-    id_projets INT REFERENCES Projets(id) ON DELETE CASCADE,
-    role_intervenant VARCHAR(100),
-    PRIMARY KEY (id_intervenants, id_projets)
+
+CREATE TABLE Workers_Projects (
+    id_worker INT REFERENCES Workers(id) ON DELETE CASCADE,
+    id_project INT REFERENCES Projects(id) ON DELETE CASCADE,
+    role_worker VARCHAR(100),
+    PRIMARY KEY (id_worker, id_project)
 );
 
-DROP TABLE IF EXISTS Jalons;
 
 --  TABLE : Jalons
-CREATE TABLE Jalons (
+
+CREATE TABLE Milestones (
     id SERIAL PRIMARY KEY,
-    id_projet INT REFERENCES Projets(id) ON DELETE CASCADE,
-    date_debut DATE,
-    date_fin DATE,
+    id_project INT REFERENCES Projects(id) ON DELETE CASCADE,
+    begin_date DATE,
+    end_date DATE,
     description TEXT,
-    statut VARCHAR(50) CHECK (statut IN ('À faire','En cours','Terminé')),
-    responsable INT REFERENCES Intervenants(id) ON DELETE SET NULL
+    status VARCHAR(50) CHECK (status IN ('A faire','En cours','Terminé')),
+    manager INT REFERENCES Workers(id) ON DELETE SET NULL
 );
 
-DROP TABLE IF EXISTS Projets;
 
 --  TABLE : Messages (Historique interactions)
+
 CREATE TABLE Messages (
     id SERIAL PRIMARY KEY,
-    id_staff INT REFERENCES Utilisateur(id) ON DELETE SET NULL,
+    id_staff INT REFERENCES Users(id) ON DELETE SET NULL,
     id_client INT REFERENCES Clients(id) ON DELETE CASCADE,
-    texte TEXT NOT NULL,
-    sender INT REFERENCES Utilisateur(id) ON DELETE SET NULL,
+    text TEXT NOT NULL,
+    sender INT REFERENCES Users(id) ON DELETE SET NULL,
     date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    type_message VARCHAR(50) CHECK (type_message IN ('email','appel','reunion','autre'))
+    message_type VARCHAR(50) CHECK (message_type IN ('email','appel','reunion','autre'))
 );
