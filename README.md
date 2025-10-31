@@ -21,7 +21,7 @@ python -m venv .venv
 source ./.venv/bin/activate
 pip install -r requirements.txt
 export ENV_FILE_LOCATION=../.env
-python -m flask
+python3 -m flask --app=src/app.py run --port=8000 --debug
 ```
 
 Run in production :
