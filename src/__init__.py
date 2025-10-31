@@ -9,6 +9,7 @@ from flask_jwt_extended import create_access_token, JWTManager, decode_token
 import datetime
 from flask_cors import CORS
 import psycopg2
+from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 CORS(app)
@@ -36,7 +37,7 @@ def init_db():
 def get_db():
     db=getattr(g, '_database', None)
     if db is None:
-        db = g._database = psycopg2.connect(f"dbname={DB_NAME} user={DB_USER} password={DB_PASSWORD} host={DB_HOST} port={DB_PORT}")
+        db = g._database = psycopg2.connect(f"dbname={DB_NAME} user={DB_USER} password={DB_PASSWORD} host={DB_HOST} port={DB_PORT} client_encoding='UTF8'")
     return db
 
 @app.teardown_appcontext
@@ -98,32 +99,55 @@ def home():
 
 # API routes
 
+@app.route("/API/canRegister")
+def api_canregister():
+    return app.config["CAN_REGISTER"]
+
 @app.route("/API/user/register", methods=["POST"])
 def api_register_user():
 
-    username = request.json["username"]
+    first_name = request.json["first_name"]
+    last_name = request.json["last_name"]
+    birth_date = request.json["birth_date"]
     password = request.json["password"]
-    role = request.json["role"]
-    nom = request.json["nom"]
-    prenom = request.json["prenom"]
+    email = request.json["email"]
+    phone = request.json["phone"]
+    health_insurance_card = request.json["health_insurance_card"]
+    created_at = datetime.datetime.fromtimestamp( round(datetime.datetime.now().timestamp()) / 1e3)
+    role_id = request.json["role_id"]
 
-    if None in [username, password, role, nom, prenom] or "" in [username, password, role, nom, prenom]:
+    if None in [first_name, last_name, password, email, phone, health_insurance_card, created_at, role_id] or "" in [first_name, last_name, password, email, phone, health_insurance_card, created_at, role_id]:
         return ({'error':"missing field"}, 400)
 
     db = get_db()
     cursor = db.cursor()
 
+    cursor.execute("SELECT COUNT(*) FROM users WHERE email = %s", (email,))
+    emailCount = cursor.fetchone()
+
+    if (emailCount[0] > 0):
+        return ({'error': "email already used"}, 403)
+
     cursor.execute(
         """
-        INSERT INTO users (username, password, role, nom, prenom)
-        VALUES (%s,%s,%s,%s,%s)
+        INSERT INTO users (first_name, last_name, birth_date, password, email, phone, health_insurance_card, created_at, role_id)
+        VALUES (%s,%s,%s,%s,%s, %s, %s, %s, %s)
         """,
-        (username, hash_password(password), role, nom, prenom)
+        (first_name, last_name, birth_date, hash_password(password), email, phone, health_insurance_card, created_at, role_id)
     )
 
     db.commit()
 
-    id = cursor.lastrowid
+    cursor.execute(
+        """
+        SELECT id
+        FROM users
+        WHERE email = %s
+        """,
+        (email,)
+    )
+
+    id = cursor.fetchone()[0]
 
     expires = datetime.timedelta(days=7)
     access_token = create_access_token(identity=str(id), expires_delta=expires)
@@ -133,10 +157,10 @@ def api_register_user():
 @app.route("/API/user/login", methods=["POST"])
 def api_login_user():
 
-    username = request.json["username"]
+    email = request.json["email"]
     password = request.json["password"]
 
-    if None in [username, password] or "" in [username, password]:
+    if None in [email, password] or "" in [email, password]:
         return ({'error': 'Missing field'}, 400)
 
     db = get_db()
@@ -146,9 +170,9 @@ def api_login_user():
         """
         SELECT password
         FROM users
-        WHERE username = %s
+        WHERE email = %s
         """,
-        (username,)
+        (email,)
     )
 
     passwd = cursor.fetchone()
@@ -163,18 +187,18 @@ def api_login_user():
         """
         SELECT *
         FROM users
-        WHERE username = %s
+        WHERE email = %s
         """,
-        (username,)
+        (email,)
     )
+
+    # TODO: Only one db request
 
     user = cursor.fetchone()
     if user is None:
         return None
 
     user = User(id=user[0], username=user[1], password=user[2], role=user[3], nom=user[4], prenom=user[5])
-
-    app.logger.info(user.id)
 
     expires = datetime.timedelta(days=7)
     access_token = create_access_token(identity=str(user.id), expires_delta=expires)
@@ -196,6 +220,21 @@ def api_user():
     user = find_user(token["sub"])
 
     return (jsonify(None if user is None else user.__dict__), 200 if user else 401)
+
+@app.route("/API/roles")
+def api_roles():
+    db = get_db()
+    cursor = db.cursor(cursor_factory=RealDictCursor)
+
+    cursor.execute(
+        """
+        SELECT *
+        FROM roles
+        """
+    )
+
+    return cursor.fetchall()
+
 
 @app.route("/API/client/create", methods=["POST"])
 def api_create_client():
