@@ -6,10 +6,13 @@ from flask import (
 )
 import bcrypt
 from flask_jwt_extended import create_access_token, JWTManager, decode_token
-import datetime
+import datetime # TODO: Only import what's matter
 from flask_cors import CORS
-import psycopg2
-from psycopg2.extras import RealDictCursor
+
+from sqlalchemy import ForeignKey, create_engine, String, Text, TIMESTAMP, text, select
+from sqlalchemy.engine import URL
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, Session
+from typing import List, Optional
 
 app = Flask(__name__)
 CORS(app)
@@ -27,24 +30,76 @@ DB_PASSWORD=app.config["DB_PASSWORD"]
 DB_HOST=getattr(app.config, "DB_HOST", "localhost")
 DB_PORT=getattr(app.config, "DB_PORT", 5432)
 
-def init_db():
-    with app.app_context():
-        db = get_db()
-        with app.open_resource('../database/schema.sql', mode='r') as f:
-            db.cursor().execute(f.read())
-        db.commit()
+url = URL.create(
+    drivername="postgresql",
+    username=DB_USER,
+    password=DB_PASSWORD,
+    host=DB_HOST,
+    port=DB_PORT,
+    database=DB_NAME
+)
 
-def get_db():
-    db=getattr(g, '_database', None)
-    if db is None:
-        db = g._database = psycopg2.connect(f"dbname={DB_NAME} user={DB_USER} password={DB_PASSWORD} host={DB_HOST} port={DB_PORT} client_encoding='UTF8'")
-    return db
+engine = create_engine(url, echo=True)
 
-@app.teardown_appcontext
-def close_connection(exeption):
-    db = getattr(g, '_database', None)
-    if db is not None:
-        db.close()
+class Base(DeclarativeBase):
+    pass
+
+class RoleUser(Base):
+    __tablename__ = "users_roles"
+
+    id_role: Mapped[int] = mapped_column(ForeignKey("roles.id"), primary_key=True)
+    id_user: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+
+    user: Mapped["User"] = relationship(back_populates="roles")
+    role: Mapped["Role"] = relationship(back_populates="users")
+
+class Role(Base):
+    __tablename__  = 'roles'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(100))
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    permissions: Mapped[Optional[str]] = mapped_column(Text)
+
+    users: Mapped[List["RoleUser"]] = relationship(back_populates="role")
+
+    def as_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+    def __repr__(self) -> str:
+        return f"Role(id={self.id!r}, title={self.title!r}, description={self.description!r}, permissions={self.permissions!r})"
+
+class User(Base):
+    __tablename__ = 'users'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    first_name: Mapped[str] = mapped_column(String(100))
+    last_name: Mapped[str] = mapped_column(String(100))
+    birth_date: Mapped[Optional[datetime.datetime]]
+    password: Mapped[str] = mapped_column(String(255))
+    email: Mapped[str] = mapped_column(String(255), unique=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(20))
+    health_insurance_card: Mapped[Optional[str]] = mapped_column(String(50))
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, default=datetime.datetime.now())
+
+    roles: Mapped[List["RoleUser"]] = relationship(back_populates="user")
+
+    def as_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+    def __repr__(self) -> str:
+        return f"""
+            User(
+                id={self.id!r},
+                first_name={self.first_name!r},
+                birth_date={self.birth_date!r},
+                password={self.password!r},
+                email={self.email!r},
+                phone={self.phone!r},
+                health_insurance_card={self.health_insurance_card!r},
+                created_at={self.created_at!r}
+            )
+        """
 
 # helpers
 
@@ -55,41 +110,6 @@ def hash_password(plain_text_password):
 def check_password_hash(plain_text_password, hashed_password):
     # Check hashed password. Using bcrypt, the salt is saved into the hash itself
     return bcrypt.checkpw(plain_text_password, hashed_password)
-
-# User
-
-class User():
-    def __init__(
-        self,
-        id: int,
-        username: str,
-        password: bytes,
-        role: str,
-        nom: str,
-        prenom: str
-    ):
-        self.id = id
-        self.username = username
-        self.password = password
-        self.role = role
-        self.nom = nom
-        self.prenom = prenom
-
-def find_user(id: int):
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute(
-        """
-        SELECT *
-        FROM users
-        WHERE id=%s
-        """,
-        (id,),
-    )
-    user = cursor.fetchone()
-    if user is None:
-        return None
-    return User(id=id, username=user[1], password=user[2], role=user[3], nom=user[4], prenom=user[5])
 
 # Displayed routes
 
@@ -116,38 +136,45 @@ def api_register_user():
     created_at = datetime.datetime.fromtimestamp( round(datetime.datetime.now().timestamp()) / 1e3)
     role_id = request.json["role_id"]
 
-    if None in [first_name, last_name, password, email, phone, health_insurance_card, created_at, role_id] or "" in [first_name, last_name, password, email, phone, health_insurance_card, created_at, role_id]:
+    birth_date = datetime.datetime.fromtimestamp(int(birth_date))
+
+    if None in [first_name, last_name, birth_date, password, email, phone, health_insurance_card, created_at, role_id] or "" in [first_name, last_name, birth_date, password, email, phone, health_insurance_card, created_at, role_id]:
         return ({'error':"missing field"}, 400)
 
-    db = get_db()
-    cursor = db.cursor()
-
-    cursor.execute("SELECT COUNT(*) FROM users WHERE email = %s", (email,))
-    emailCount = cursor.fetchone()
-
-    if (emailCount[0] > 0):
+    session = Session(engine)
+    emailQuerry = select(User).where(User.email.__eq__(email))
+    emailResp = session.scalar(emailQuerry)
+    if not ( emailResp is None ):
         return ({'error': "email already used"}, 403)
+    session.close()
 
-    cursor.execute(
-        """
-        INSERT INTO users (first_name, last_name, birth_date, password, email, phone, health_insurance_card, created_at, role_id)
-        VALUES (%s,%s,%s,%s,%s, %s, %s, %s, %s)
-        """,
-        (first_name, last_name, birth_date, hash_password(password), email, phone, health_insurance_card, created_at, role_id)
-    )
+    with Session(engine) as session:
+        newUser = User(
+            first_name=first_name,
+            last_name=last_name,
+            birth_date=birth_date,
+            password=hash_password(password),
+            email=email,
+            phone=phone,
+            health_insurance_card=health_insurance_card,
+            created_at = created_at
+        )
+        session.add(newUser)
+        session.commit()
 
-    db.commit()
 
-    cursor.execute(
-        """
-        SELECT id
-        FROM users
-        WHERE email = %s
-        """,
-        (email,)
-    )
+    session = Session(engine)
+    idQuerry = select(User.id).where(User.email.__eq__(email))
+    id = session.scalar(idQuerry)
+    session.close()
 
-    id = cursor.fetchone()[0]
+    with Session(engine) as session:
+        newRoleUser = RoleUser(
+            id_role=role_id,
+            id_user=id
+        )
+        session.add(newRoleUser)
+        session.commit()
 
     expires = datetime.timedelta(days=7)
     access_token = create_access_token(identity=str(id), expires_delta=expires)
@@ -163,45 +190,19 @@ def api_login_user():
     if None in [email, password] or "" in [email, password]:
         return ({'error': 'Missing field'}, 400)
 
-    db = get_db()
-    cursor = db.cursor()
-
-    cursor.execute(
-        """
-        SELECT password
-        FROM users
-        WHERE email = %s
-        """,
-        (email,)
-    )
-
-    passwd = cursor.fetchone()
+    session=Session(engine)
+    idPasswdQuerry = select(User.id, User.password).where(User.email.__eq__(email))
+    (id, passwd) = session.execute(idPasswdQuerry).first()
 
     if passwd is None:
         return ({'error': 'User not found'}, 404)
 
-    if not check_password_hash(password.encode(), passwd[0].encode()):
+    if not check_password_hash(password.encode(), passwd.encode()):
         return ({'error': 'Wrong password'}, 401)
 
-    cursor.execute(
-        """
-        SELECT *
-        FROM users
-        WHERE email = %s
-        """,
-        (email,)
-    )
-
-    # TODO: Only one db request
-
-    user = cursor.fetchone()
-    if user is None:
-        return None
-
-    user = User(id=user[0], username=user[1], password=user[2], role=user[3], nom=user[4], prenom=user[5])
 
     expires = datetime.timedelta(days=7)
-    access_token = create_access_token(identity=str(user.id), expires_delta=expires)
+    access_token = create_access_token(identity=str(id), expires_delta=expires)
 
     return ({'token': access_token}, 200)
 
@@ -214,27 +215,19 @@ def api_user():
         return ({"msg": "missing token"}, 400)
 
     token = decode_token(token)
+    id = token["sub"]
 
-    app.logger.info(token["sub"])
+    session = Session(engine)
+    userQuerry = select(User).where(User.id.__eq__(id))
+    user = session.scalar(userQuerry)
 
-    user = find_user(token["sub"])
-
-    return (jsonify(None if user is None else user.__dict__), 200 if user else 401)
+    return (user.as_dict() if user else {"error": "wrong id"}, 200 if user else 401)
 
 @app.route("/API/roles")
 def api_roles():
-    db = get_db()
-    cursor = db.cursor(cursor_factory=RealDictCursor)
-
-    cursor.execute(
-        """
-        SELECT *
-        FROM roles
-        """
-    )
-
-    return cursor.fetchall()
-
+    session = Session(engine)
+    rolesQuerry = select(Role)
+    return [user.as_dict() for user in session.scalars(rolesQuerry).all()]
 
 @app.route("/API/client/create", methods=["POST"])
 def api_create_client():
@@ -248,6 +241,3 @@ def api_update_client():
 @app.route("/API/client/delete", methods=["POST"])
 def api_delete_client():
     pass
-
-# if __name__ == "__main__":
-#     app.run(port=8000, debug=True)
