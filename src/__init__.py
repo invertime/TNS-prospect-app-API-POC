@@ -192,10 +192,12 @@ def api_login_user():
 
     session=Session(engine)
     idPasswdQuerry = select(User.id, User.password).where(User.email.__eq__(email))
-    (id, passwd) = session.execute(idPasswdQuerry).first()
+    idPasswd = session.execute(idPasswdQuerry).first()
 
-    if passwd is None:
+    if not idPasswd:
         return ({'error': 'User not found'}, 404)
+
+    (id, passwd) = idPasswd
 
     if not check_password_hash(password.encode(), passwd.encode()):
         return ({'error': 'Wrong password'}, 401)
